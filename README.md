@@ -16,6 +16,4 @@
 
 直接在浏览器中打开 `motionsites_prompts_gallery.html` 即可。
 
-## 许可证
 
-[GPL-3.0](LICENSE)
