@@ -423,15 +423,20 @@
       flex: 1;
     }
 
-    .card-thumbnail {
-      display: block;
+    .card-preview {
+      position: relative;
       width: 100%;
       aspect-ratio: 16 / 10;
-      object-fit: contain;
       background: #121318;
       border-radius: var(--radius-sm);
       margin: 12px 0;
+      overflow: hidden;
     }
+
+    .card-thumbnail, .card-hover-video { display: block; position: absolute; inset: 0; width: 100%; height: 100%; object-fit: contain; }
+    .card-hover-video { pointer-events: none; opacity: 0; }
+    .card-hover-video.is-playing { opacity: 1; }
+    .card-hover-status { font-size: 0.8rem; color: var(--muted); margin: 8px 0; }
 
     .card-title {
       font-family: 'Space Grotesk', sans-serif;
@@ -1036,6 +1041,14 @@
       videoStatus: document.getElementById('local-preview-status'),
     };
 
+    const cardPreview = new LocalCardPreview(
+      id => previewLibrary?.get(id),
+      () => !document.hidden && els.modalOverlay.hidden,
+    );
+    document.addEventListener('visibilitychange', () => {
+      if (document.hidden) cardPreview.stop();
+    });
+
     const SVG_COPY = `<svg class="icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>`;
     const SVG_CHECK = `<svg class="icon-check" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"></path></svg>`;
 
@@ -1132,6 +1145,7 @@
       const platformClass = prompt.platform === 'app' ? 'badge-platform-app' : 'badge-platform-website';
       const platformText = prompt.platform === 'app' ? 'App' : 'Website';
       const poster = previewLibrary?.poster(prompt.id);
+      const hasLocal = previewLibrary?.has(prompt.id);
 
       article.innerHTML = `
         <span class="card-number">${originalIndex + 1}</span>
@@ -1143,7 +1157,7 @@
             <span class="badge badge-type">${escapeHtml(prompt.type || '-')}</span>
             <span class="badge ${tierClass}">${tierText}</span>
           </div>
-          ${poster ? `<img class="card-thumbnail" src="${escapeHtml(poster)}" loading="lazy" decoding="async" alt="">` : ''}
+          ${hasLocal ? `<div class="card-preview">${poster ? `<img class="card-thumbnail" src="${escapeHtml(poster)}" loading="lazy" decoding="async" alt="">` : ''}</div><p class="card-hover-status" role="status" hidden></p>` : ''}
           ${prompt.description ? `<p class="card-description">${escapeHtml(prompt.description)}</p>` : ''}
           ${previewLibrary?.has(prompt.id) ? '<span class="badge badge-free">本地预览已就绪</span>' : ''}
         </div>
@@ -1169,6 +1183,21 @@
         if (e.target.closest('a, button')) return;
         openModal(prompt, detailBtn);
       });
+
+      const preview = article.querySelector('.card-preview');
+      const status = article.querySelector('.card-hover-status');
+      if (preview) {
+        preview.addEventListener('pointerenter', event => {
+          if (event.pointerType !== 'touch') cardPreview.play(article, preview, status, prompt.id);
+        });
+        preview.addEventListener('pointerleave', () => cardPreview.stopFor(article));
+        article.addEventListener('focusin', event => {
+          if (event.target.matches(':focus-visible')) cardPreview.play(article, preview, status, prompt.id);
+        });
+        article.addEventListener('focusout', event => {
+          if (!article.contains(event.relatedTarget)) cardPreview.stopFor(article);
+        });
+      }
 
       return article;
     }
@@ -1200,6 +1229,7 @@
     }
 
     function renderCards(data) {
+      cardPreview.stop();
       els.gallery.innerHTML = '';
 
       if (data.length === 0) {
@@ -1287,6 +1317,7 @@
     }
 
     function openModal(prompt, trigger) {
+      cardPreview.stop();
       const tierClass = prompt.is_free ? 'badge-free' : 'badge-premium';
       const tierText = prompt.is_free ? '免费' : '付费';
       const platformClass = prompt.platform === 'app' ? 'badge-platform-app' : 'badge-platform-website';

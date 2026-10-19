@@ -156,5 +156,94 @@
     }
   }
 
+  class LocalCardPreview {
+    constructor(getSource, isAllowed = () => true) {
+      this.getSource = getSource;
+      this.isAllowed = isAllowed;
+      this.card = null;
+      this.container = null;
+      this.video = null;
+      this.objectUrl = null;
+      this.request = 0;
+      this.observer = typeof IntersectionObserver === 'function' ? new IntersectionObserver(entries => {
+        for (const entry of entries) {
+          if (!entry.isIntersecting && entry.target === this.container) this.stop();
+        }
+      }) : null;
+    }
+
+    stopFor(card) {
+      if (this.card === card) this.stop();
+    }
+
+    stop() {
+      this.request++;
+      if (this.container) this.observer?.unobserve(this.container);
+      this.card = null;
+      this.container = null;
+      if (this.video) {
+        this.video.onplaying = null;
+        this.video.onerror = null;
+        this.video.pause();
+        this.video.removeAttribute('src');
+        this.video.load();
+        this.video.remove();
+        this.video = null;
+      }
+      if (this.objectUrl) URL.revokeObjectURL(this.objectUrl);
+      this.objectUrl = null;
+    }
+
+    async play(card, container, status, id) {
+      if (this.card === card || !this.isAllowed()) return;
+      this.stop();
+      const request = this.request;
+      this.card = card;
+      this.container = container;
+      this.observer?.observe(container);
+      status.hidden = true;
+      status.textContent = '';
+      const fail = error => {
+        if (request !== this.request) return;
+        status.textContent = error.name === 'NotAllowedError'
+          ? '浏览器未允许自动播放，可点击“本地预览”播放。'
+          : '悬停预览无法播放，请点击“本地预览”查看详情。';
+        status.hidden = false;
+        console.warn('Local card preview failed', id, error);
+        this.stop();
+      };
+      try {
+        const source = await this.getSource(id);
+        if (request !== this.request) return;
+        if (!this.isAllowed() || !card.isConnected || !source || source.kind === 'image') {
+          this.stop();
+          return;
+        }
+        const video = document.createElement('video');
+        video.className = 'card-hover-video';
+        video.muted = true;
+        video.defaultMuted = true;
+        video.playsInline = true;
+        video.loop = true;
+        video.preload = 'none';
+        video.tabIndex = -1;
+        video.setAttribute('aria-hidden', 'true');
+        video.onplaying = () => {
+          if (request === this.request) video.classList.add('is-playing');
+        };
+        video.onerror = () => fail(new Error(`Media decode error: ${video.error?.code || 'unknown'}`));
+        this.video = video;
+        this.objectUrl = source.blob ? URL.createObjectURL(source.blob) : null;
+        video.src = this.objectUrl || source.url;
+        container.appendChild(video);
+        await video.play();
+        if (request !== this.request) video.pause();
+      } catch (error) {
+        fail(error);
+      }
+    }
+  }
+
   window.LocalPreviewLibrary = LocalPreviewLibrary;
+  window.LocalCardPreview = LocalCardPreview;
 })();

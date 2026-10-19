@@ -44,7 +44,9 @@ supplement-shop/video.mp4
 python3 build_gallery.py --local-previews local_previews
 ```
 
-打开 `local_gallery/index.html`，预览会从同目录的 `media/` 读取。视频和图片分别计数，图片会在详情中明确标注，不会被当作视频。`local_previews/` 和 `local_gallery/` 已加入 Git 忽略列表。此模式不生成轻应用上传 ZIP，避免把本机媒体混入公开上传包。匹配、媒体类型数量和缺失清单写入 `local_gallery/manifest.json`；请保留整个目录。
+打开 `local_gallery/index.html`，预览会从同目录的 `media/` 读取。鼠标移入预览图时，视频静音循环播放；移出即停止并恢复缩略图。键盘聚焦卡片操作也能预览，触屏可点击“本地预览”进入详情。同一时间只加载一个悬停播放器，切换筛选、打开详情、滚出视口或切到后台时停止；自动播放失败会显示原因和详情播放入口。
+
+视频和图片分别计数，图片会在详情中明确标注，不会被当作视频。`local_previews/` 和 `local_gallery/` 已加入 Git 忽略列表。此模式不生成轻应用上传 ZIP，避免把本机媒体混入公开上传包。匹配、媒体类型数量和缺失清单写入 `local_gallery/manifest.json`；请保留整个目录。
 
 可选的 `local_previews/posters/<效果ID>.jpg` 会作为视频卡片缩略图随私有构建复制；图片预览直接使用自身作为缩略图。缩略图目录不会被误算为重复的预览文件。
 
@@ -71,6 +73,7 @@ python3 -m http.server 8765 --bind 127.0.0.1
 ```bash
 python3 -m unittest discover -s tests -v
 node tests/test_local_previews.cjs
+node tests/test_card_preview.cjs
 ```
 
 构建过程验证数据字段与 ID、内嵌 JSON、ZIP 内容和摘要。新增测试覆盖本地文件匹配、重名冲突、路径边界、私有与公开构建隔离；JavaScript 测试模拟缓存保存、重新读取和空间不足。模拟存储测试不代表浏览器持久化或播放器已实测。浏览器检查应覆盖导入、刷新恢复、媒体解码、关闭暂停、筛选与复制；本次新增播放器的页面实测因浏览器工具访问限制未完成。
