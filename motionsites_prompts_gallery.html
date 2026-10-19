@@ -79,6 +79,12 @@
 
     .modal-preview h3 { margin-bottom: 10px; font-size: 0.95rem; }
     .modal-preview p { margin-top: 10px; color: var(--muted); font-size: 0.82rem; line-height: 1.6; }
+    .local-library { margin-top: 18px; padding: 16px; background: var(--surface); border: 1px solid var(--border); border-radius: var(--radius-sm); }
+    .local-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
+    .local-actions label { display: inline-flex; gap: 8px; align-items: center; font-size: 0.82rem; color: var(--muted); }
+    #local-import-report { margin-top: 10px; font-size: 0.8rem; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
+    #local-preview-video { width: 100%; max-height: 42vh; margin-bottom: 12px; border-radius: var(--radius-sm); background: #000; }
+    #local-preview-status { margin: 0 0 12px; }
 
     *, *::before, *::after {
       box-sizing: border-box;
@@ -897,7 +903,19 @@
       </div>
     </header>
 
-    <p class="preview-note">每条提示词均提供官网效果预览入口，在新窗口打开，需要联网。历史条目可能已更名或调整访问权限。</p>
+    <section class="local-library" aria-label="本地视频预览">
+      <div class="local-actions">
+        <button type="button" class="detail-btn" id="import-folder" disabled>导入视频目录</button>
+        <button type="button" class="detail-btn" id="import-files" disabled>选择视频文件</button>
+        <span id="local-preview-count" role="status">本地预览文件 0 / 328</span>
+        <label><input type="checkbox" id="local-only">仅显示有本地视频的条目</label>
+      </div>
+      <input id="preview-folder-input" type="file" webkitdirectory multiple accept="video/*" hidden>
+      <input id="preview-files-input" type="file" multiple accept="video/*,.mp4,.webm,.mov,.m4v,.ogv,.ogg" hidden>
+      <p class="preview-note">选择已获得的视频文件，按效果 ID 或标题匹配；也支持“效果 ID/视频.mp4”目录结构。文件只在本机处理。浏览器缓存可能被清理，原始视频请自行保留。</p>
+      <pre id="local-import-report" role="status" aria-live="polite"></pre>
+    </section>
+    <p class="preview-note">未导入视频的条目可打开官网预览，需要联网。历史条目可能已更名或调整访问权限。</p>
     <div id="status" role="status"><span class="spinner"></span>正在加载提示词数据…</div>
 
     <main id="gallery"></main>
@@ -937,8 +955,10 @@
         <div id="modal-description"></div>
         <section class="modal-preview" aria-labelledby="preview-heading">
           <h3 id="preview-heading">效果预览</h3>
+          <p id="local-preview-status" role="status">尚未导入本地视频。</p>
+          <video id="local-preview-video" controls muted playsinline preload="metadata" hidden aria-label="本地效果预览视频"></video>
           <a id="modal-preview-link" class="preview-link" target="_blank" rel="noopener noreferrer">在官网预览效果 <span aria-hidden="true">↗</span></a>
-          <p>预览在 MotionSites 官网播放。本页面不下载或镜像官网视频与演示源码；官网内容和访问权限可能随时间调整。</p>
+          <p>本地视频可在此播放；官网预览会在新窗口打开。导入的文件不会随公开上传包导出。</p>
         </section>
         <div id="modal-prompt-label">完整提示词</div>
         <pre id="modal-prompt"></pre>
@@ -957,11 +977,17 @@
   </div>
 
   <!-- embedded-prompt-data -->
+  <!-- embedded-local-previews -->
+  <script src="./local_previews.js"></script>
   <script>
     const DATA_URL = './motionsites_all_prompts.json';
     let allPrompts = [];
     let filteredPrompts = [];
     let modalTrigger = null;
+    let previewLibrary = null;
+    let previewObjectUrl = null;
+    let previewRequest = 0;
+    let activePromptId = null;
 
     const els = {
       status: document.getElementById('status'),
@@ -987,6 +1013,15 @@
       modalCopy: document.getElementById('modal-copy'),
       modalPreviewLink: document.getElementById('modal-preview-link'),
       page: document.querySelector('.page'),
+      localOnly: document.getElementById('local-only'),
+      localCount: document.getElementById('local-preview-count'),
+      importReport: document.getElementById('local-import-report'),
+      importFolder: document.getElementById('import-folder'),
+      importFiles: document.getElementById('import-files'),
+      folderInput: document.getElementById('preview-folder-input'),
+      filesInput: document.getElementById('preview-files-input'),
+      video: document.getElementById('local-preview-video'),
+      videoStatus: document.getElementById('local-preview-status'),
     };
 
     const SVG_COPY = `<svg class="icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>`;
@@ -1013,7 +1048,18 @@
         populateFilters();
         filterAndRender();
         els.status.style.display = 'none';
+        const bundled = document.getElementById('local-preview-data');
+        previewLibrary = new LocalPreviewLibrary(allPrompts, bundled ? JSON.parse(bundled.textContent) : {}, () => {
+          els.localCount.textContent = `本地预览文件 ${previewLibrary.count()} / ${allPrompts.length}`;
+          filterAndRender();
+          if (activePromptId) loadLocalPreview(activePromptId);
+        });
+        await previewLibrary.init();
+        els.importReport.textContent = previewLibrary.storageMessage;
+        els.importFolder.disabled = false;
+        els.importFiles.disabled = false;
       } catch (err) {
+        els.status.style.display = 'block';
         els.status.classList.add('error');
         els.status.textContent = `加载失败：${err.message}。源文件需通过 HTTP 访问；免启动版本请运行 python3 build_gallery.py 后打开 dist/index.html。`;
         console.error(err);
@@ -1084,9 +1130,10 @@
             <span class="badge ${tierClass}">${tierText}</span>
           </div>
           ${prompt.description ? `<p class="card-description">${escapeHtml(prompt.description)}</p>` : ''}
+          ${previewLibrary?.has(prompt.id) ? '<span class="badge badge-free">本地视频已导入</span>' : ''}
         </div>
         <div class="card-footer">
-          <button type="button" class="detail-btn" aria-label="查看 ${escapeHtml(prompt.title)} 的提示词">查看提示词</button>
+          <button type="button" class="detail-btn" aria-label="查看 ${escapeHtml(prompt.title)} 的提示词">${previewLibrary?.has(prompt.id) ? '本地预览' : '查看提示词'}</button>
           <a class="preview-link" href="${escapeHtml(officialPreviewUrl(prompt))}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(prompt.title)}：官网效果预览，在新窗口打开">官网预览 <span aria-hidden="true">↗</span></a>
           <button class="copy-btn" aria-label="复制完整提示词" title="复制完整提示词">
             ${SVG_COPY}
@@ -1132,7 +1179,8 @@
           (tier === 'premium' && !p.is_free);
         const matchesPlatform = platform === 'all' || p.platform === platform;
 
-        return matchesTerm && matchesCategory && matchesType && matchesTier && matchesPlatform;
+        const matchesLocal = !els.localOnly.checked || previewLibrary?.has(p.id);
+        return matchesTerm && matchesCategory && matchesType && matchesTier && matchesPlatform && matchesLocal;
       });
     }
 
@@ -1141,6 +1189,8 @@
 
       if (data.length === 0) {
         els.emptyState.style.display = 'block';
+        els.emptyState.querySelector('h3').textContent = els.localOnly.checked ? '暂无匹配的本地预览视频' : '未找到匹配的提示词';
+        els.emptyState.querySelector('p').textContent = els.localOnly.checked ? '请先选择视频目录导入，或调整其他筛选条件。' : '尝试调整搜索关键词或筛选条件';
         els.counter.querySelector('strong').textContent = 0;
         return;
       }
@@ -1213,6 +1263,7 @@
       els.search.value = '';
       els.categoryFilter.value = 'all';
       els.typeFilter.value = 'all';
+      els.localOnly.checked = false;
       els.tierGroup.querySelectorAll('button').forEach(b => b.classList.remove('active'));
       els.tierGroup.querySelector('[data-tier="all"]').classList.add('active');
       els.platformGroup.querySelectorAll('button').forEach(b => b.classList.remove('active'));
@@ -1248,14 +1299,76 @@
       els.page.inert = true;
       document.body.style.overflow = 'hidden';
       els.modalClose.focus({ preventScroll: true });
+      activePromptId = prompt.id;
+      loadLocalPreview(prompt.id);
+    }
+
+    function stopLocalPreview() {
+      previewRequest++;
+      els.video.pause();
+      els.video.hidden = true;
+      els.video.removeAttribute('src');
+      els.video.load();
+      if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
+      previewObjectUrl = null;
+    }
+
+    async function loadLocalPreview(id) {
+      stopLocalPreview();
+      const request = previewRequest;
+      els.videoStatus.textContent = '正在读取本地预览…';
+      try {
+        const source = await previewLibrary?.get(id);
+        if (request !== previewRequest || els.modalOverlay.hidden) return;
+        if (!source) {
+          els.videoStatus.textContent = '尚未导入此效果的视频。可在顶部导入目录，或打开官网预览。';
+          return;
+        }
+        const url = source.blob ? URL.createObjectURL(source.blob) : source.url;
+        if (source.blob) previewObjectUrl = url;
+        els.video.onerror = () => {
+          if (request === previewRequest) els.videoStatus.textContent = '此文件无法播放，可能已损坏或编码不受支持。建议使用 H.264 MP4 或 WebM。';
+        };
+        els.video.onloadedmetadata = () => {
+          if (request === previewRequest) els.videoStatus.textContent = '本地视频已就绪，点击播放。';
+        };
+        els.video.hidden = false;
+        els.video.src = url;
+        els.video.load();
+      } catch (error) {
+        if (request === previewRequest) els.videoStatus.textContent = '读取本地视频失败，请重新选择原始文件。';
+      }
+    }
+
+    async function importLocalPreviews(input) {
+      els.importFolder.disabled = true;
+      els.importFiles.disabled = true;
+      els.importReport.textContent = '正在匹配并保存本地文件…';
+      try {
+        const report = await previewLibrary.importFiles(input.files);
+        const lines = [`已导入 ${report.imported} 条，其中 ${report.saved} 条已保存到当前浏览器缓存，${report.sessionOnly} 条仅本次打开可用。`];
+        if (report.unmatched.length) lines.push(`未匹配 ${report.unmatched.length} 个文件：${report.unmatched.join('、')}`);
+        if (report.duplicates.length) lines.push(`重复匹配，未覆盖：${report.duplicates.join('、')}`);
+        lines.push(...report.errors);
+        els.importReport.textContent = lines.join('\n');
+      } catch (error) {
+        els.importReport.textContent = '导入失败，请检查文件是否可读后重试；原始视频未被修改。';
+      } finally {
+        input.value = '';
+        els.importFolder.disabled = false;
+        els.importFiles.disabled = false;
+      }
     }
 
     function closeModal() {
+      stopLocalPreview();
+      activePromptId = null;
       els.modalOverlay.classList.remove('active');
       els.modalOverlay.hidden = true;
       els.page.inert = false;
       document.body.style.overflow = '';
       if (modalTrigger?.isConnected) modalTrigger.focus({ preventScroll: true });
+      else els.search.focus({ preventScroll: true });
       modalTrigger = null;
     }
 
@@ -1270,7 +1383,7 @@
       if (e.key === 'Escape') {
         closeModal();
       } else if (e.key === 'Tab') {
-        const focusable = [...els.modal.querySelectorAll('a[href], button:not([disabled])')];
+        const focusable = [...els.modal.querySelectorAll('a[href], button:not([disabled]), video[controls]:not([hidden])')];
         const first = focusable[0];
         const last = focusable[focusable.length - 1];
         if (e.shiftKey && document.activeElement === first) {
@@ -1305,6 +1418,12 @@
     });
 
     els.clearBtn.addEventListener('click', clearFilters);
+    els.localOnly.addEventListener('change', filterAndRender);
+    els.importFolder.addEventListener('click', () => els.folderInput.click());
+    els.importFiles.addEventListener('click', () => els.filesInput.click());
+    els.folderInput.addEventListener('change', () => importLocalPreviews(els.folderInput));
+    els.filesInput.addEventListener('change', () => importLocalPreviews(els.filesInput));
+    window.addEventListener('beforeunload', stopLocalPreview);
 
     window.addEventListener('scroll', () => {
       if (window.scrollY > 10) {

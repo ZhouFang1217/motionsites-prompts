@@ -12,3 +12,5 @@ motionsites-app/android/local.properties
 *.aab
 .playwright-cli/
 dist/
+local_previews/
+local_gallery/
