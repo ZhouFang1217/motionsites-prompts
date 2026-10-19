@@ -10,3 +10,5 @@ motionsites-app/android/captures/
 motionsites-app/android/local.properties
 *.apk
 *.aab
+.playwright-cli/
+dist/

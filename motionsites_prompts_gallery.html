@@ -4,9 +4,7 @@
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>MotionSites Prompt Gallery</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600&family=Space+Grotesk:wght@500;600;700&display=swap" rel="stylesheet">
+  <link rel="icon" href="data:,">
   <style>
     :root {
       --bg: #0B0C10;
@@ -32,6 +30,55 @@
       --shadow-hover: 0 18px 48px rgba(0, 0, 0, 0.55);
       --transition: 0.25s cubic-bezier(0.16, 1, 0.3, 1);
     }
+
+    [hidden] { display: none !important; }
+
+    :focus-visible {
+      outline: 2px solid var(--accent);
+      outline-offset: 4px;
+    }
+
+    .preview-link, .detail-btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 9px 11px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+      background: transparent;
+      color: var(--text);
+      font: inherit;
+      font-size: 0.8rem;
+      font-weight: 600;
+      text-decoration: none;
+      cursor: pointer;
+    }
+
+    .preview-link:hover, .detail-btn:hover {
+      border-color: var(--accent);
+      background: var(--surface-hover);
+    }
+
+    .preview-link { color: #c4b5fd; }
+    .card-footer { gap: 8px; flex-wrap: wrap; }
+    .card-footer .copy-btn { margin-left: auto; }
+    .preview-note {
+      margin-top: 16px;
+      color: var(--muted);
+      font-size: 0.82rem;
+      line-height: 1.6;
+    }
+
+    .modal-preview {
+      margin-bottom: 20px;
+      padding: 16px;
+      border: 1px solid var(--border);
+      border-radius: var(--radius-sm);
+    }
+
+    .modal-preview h3 { margin-bottom: 10px; font-size: 0.95rem; }
+    .modal-preview p { margin-top: 10px; color: var(--muted); font-size: 0.82rem; line-height: 1.6; }
 
     *, *::before, *::after {
       box-sizing: border-box;
@@ -585,6 +632,8 @@
       opacity: 1;
     }
 
+    #toast.error svg { display: none; }
+
     #toast svg {
       width: 18px;
       height: 18px;
@@ -776,11 +825,12 @@
 
     @media (max-width: 640px) {
       .page { padding: 0 16px 60px; }
-      header { padding: 18px 0 14px; }
+      header { padding: 18px 0 14px; position: static; }
       .header-inner { flex-direction: column; align-items: flex-start; }
       #controls { flex-direction: column; align-items: stretch; }
       .control-group { width: 100%; }
       .search-box, select, .tier-group, .platform-group, .clear-btn { width: 100%; }
+      .search-box { flex: 0 0 auto; min-width: 0; }
       .tier-group button, .platform-group button { flex: 1; }
       #gallery { grid-template-columns: 1fr; gap: 16px; }
       .prompt-card { padding: 18px; }
@@ -816,7 +866,7 @@
             <circle cx="11" cy="11" r="8"></circle>
             <path d="m21 21-4.3-4.3"></path>
           </svg>
-          <input type="text" id="search" placeholder="搜索标题、分类、类型…" autocomplete="off">
+          <input type="text" id="search" aria-label="搜索标题、分类、类型" placeholder="搜索标题、分类、类型…" autocomplete="off">
         </div>
 
         <div class="control-group platform-group" id="platform-group">
@@ -826,13 +876,13 @@
         </div>
 
         <div class="control-group">
-          <select id="category-filter">
+          <select id="category-filter" aria-label="分类">
             <option value="all">全部分类</option>
           </select>
         </div>
 
         <div class="control-group">
-          <select id="type-filter">
+          <select id="type-filter" aria-label="类型">
             <option value="all">全部类型</option>
           </select>
         </div>
@@ -847,7 +897,8 @@
       </div>
     </header>
 
-    <div id="status"><span class="spinner"></span>正在加载提示词数据…</div>
+    <p class="preview-note">每条提示词均提供官网效果预览入口，在新窗口打开，需要联网。历史条目可能已更名或调整访问权限。</p>
+    <div id="status" role="status"><span class="spinner"></span>正在加载提示词数据…</div>
 
     <main id="gallery"></main>
 
@@ -861,14 +912,14 @@
     </div>
   </div>
 
-  <div id="toast">
+  <div id="toast" role="status" aria-live="polite">
     <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
       <path d="M20 6 9 17l-5-5"></path>
     </svg>
     <span>已复制到剪贴板</span>
   </div>
 
-  <div id="modal-overlay">
+  <div id="modal-overlay" hidden>
     <div id="modal" role="dialog" aria-modal="true" aria-labelledby="modal-title">
       <div id="modal-header">
         <div>
@@ -884,6 +935,11 @@
       </div>
       <div id="modal-body">
         <div id="modal-description"></div>
+        <section class="modal-preview" aria-labelledby="preview-heading">
+          <h3 id="preview-heading">效果预览</h3>
+          <a id="modal-preview-link" class="preview-link" target="_blank" rel="noopener noreferrer">在官网预览效果 <span aria-hidden="true">↗</span></a>
+          <p>预览在 MotionSites 官网播放。本页面不下载或镜像官网视频与演示源码；官网内容和访问权限可能随时间调整。</p>
+        </section>
         <div id="modal-prompt-label">完整提示词</div>
         <pre id="modal-prompt"></pre>
       </div>
@@ -900,10 +956,12 @@
     </div>
   </div>
 
+  <!-- embedded-prompt-data -->
   <script>
     const DATA_URL = './motionsites_all_prompts.json';
     let allPrompts = [];
     let filteredPrompts = [];
+    let modalTrigger = null;
 
     const els = {
       status: document.getElementById('status'),
@@ -927,6 +985,8 @@
       modalClose: document.getElementById('modal-close'),
       modalCloseBtn: document.getElementById('modal-close-btn'),
       modalCopy: document.getElementById('modal-copy'),
+      modalPreviewLink: document.getElementById('modal-preview-link'),
+      page: document.querySelector('.page'),
     };
 
     const SVG_COPY = `<svg class="icon-copy" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect width="14" height="14" x="8" y="8" rx="2" ry="2"></rect><path d="M4 16c-1.1 0-2-.9-2-2V4c0-1.1.9-2 2-2h10c1.1 0 2 .9 2 2"></path></svg>`;
@@ -934,9 +994,15 @@
 
     async function loadData() {
       try {
-        const res = await fetch(DATA_URL);
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
+        const embedded = document.getElementById('prompt-data');
+        let data;
+        if (embedded) {
+          data = JSON.parse(embedded.textContent);
+        } else {
+          const res = await fetch(DATA_URL);
+          if (!res.ok) throw new Error(`HTTP ${res.status}`);
+          data = await res.json();
+        }
         if (!Array.isArray(data)) throw new Error('数据格式错误');
 
         const required = ['id', 'title', 'category', 'type', 'is_free', 'prompt_text'];
@@ -949,7 +1015,7 @@
         els.status.style.display = 'none';
       } catch (err) {
         els.status.classList.add('error');
-        els.status.innerHTML = `加载失败：${err.message}<br>请确保通过 HTTP 服务器访问此页面（不能直接用 file:// 打开）。`;
+        els.status.textContent = `加载失败：${err.message}。源文件需通过 HTTP 访问；免启动版本请运行 python3 build_gallery.py 后打开 dist/index.html。`;
         console.error(err);
       }
     }
@@ -990,6 +1056,12 @@
         .replace(/'/g, '&#039;');
     }
 
+    function officialPreviewUrl(prompt) {
+      const url = new URL(prompt.platform === 'app' ? '/apps' : '/', 'https://motionsites.ai');
+      url.searchParams.set('prompt', String(prompt.id));
+      return url.href;
+    }
+
     function createCard(prompt, originalIndex) {
       const article = document.createElement('article');
       article.className = `prompt-card ${prompt.is_free ? 'free' : 'premium'}`;
@@ -1014,6 +1086,8 @@
           ${prompt.description ? `<p class="card-description">${escapeHtml(prompt.description)}</p>` : ''}
         </div>
         <div class="card-footer">
+          <button type="button" class="detail-btn" aria-label="查看 ${escapeHtml(prompt.title)} 的提示词">查看提示词</button>
+          <a class="preview-link" href="${escapeHtml(officialPreviewUrl(prompt))}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(prompt.title)}：官网效果预览，在新窗口打开">官网预览 <span aria-hidden="true">↗</span></a>
           <button class="copy-btn" aria-label="复制完整提示词" title="复制完整提示词">
             ${SVG_COPY}
             ${SVG_CHECK}
@@ -1022,14 +1096,16 @@
       `;
 
       const btn = article.querySelector('.copy-btn');
+      const detailBtn = article.querySelector('.detail-btn');
+      detailBtn.addEventListener('click', () => openModal(prompt, detailBtn));
       btn.addEventListener('click', (e) => {
         e.stopPropagation();
         copyPrompt(prompt.prompt_text || '', btn);
       });
 
       article.addEventListener('click', (e) => {
-        if (e.target.closest('.copy-btn')) return;
-        openModal(prompt);
+        if (e.target.closest('a, button')) return;
+        openModal(prompt, detailBtn);
       });
 
       return article;
@@ -1087,6 +1163,7 @@
 
     async function copyPrompt(text, btn) {
       if (!text) return;
+      btn.classList.remove('copied');
 
       try {
         await navigator.clipboard.writeText(text);
@@ -1094,12 +1171,23 @@
         const ta = document.createElement('textarea');
         ta.value = text;
         ta.setAttribute('readonly', '');
-        ta.style.position = 'absolute';
+        ta.style.position = 'fixed';
         ta.style.left = '-9999px';
         document.body.appendChild(ta);
         ta.select();
-        document.execCommand('copy');
-        document.body.removeChild(ta);
+        let copied = false;
+        try {
+          copied = document.execCommand('copy');
+        } catch (fallbackError) {
+          console.warn('Clipboard fallback failed.');
+        } finally {
+          ta.remove();
+          if (btn.isConnected) btn.focus({ preventScroll: true });
+        }
+        if (!copied) {
+          showToast('复制失败，请在详情中选择提示词后手动复制', true);
+          return;
+        }
       }
 
       btn.classList.add('copied');
@@ -1111,8 +1199,9 @@
     }
 
     let toastTimeout;
-    function showToast(message) {
+    function showToast(message, isError = false) {
       els.toast.querySelector('span').textContent = message;
+      els.toast.classList.toggle('error', isError);
       els.toast.classList.add('show');
       clearTimeout(toastTimeout);
       toastTimeout = setTimeout(() => {
@@ -1131,7 +1220,7 @@
       filterAndRender();
     }
 
-    function openModal(prompt) {
+    function openModal(prompt, trigger) {
       const tierClass = prompt.is_free ? 'badge-free' : 'badge-premium';
       const tierText = prompt.is_free ? '免费' : '付费';
       const platformClass = prompt.platform === 'app' ? 'badge-platform-app' : 'badge-platform-website';
@@ -1146,18 +1235,28 @@
       `;
       els.modalDescription.textContent = prompt.description || '暂无描述';
       els.modalPrompt.textContent = prompt.prompt_text || '';
+      els.modalPreviewLink.href = officialPreviewUrl(prompt);
+      els.modalPreviewLink.setAttribute('aria-label', `${prompt.title}：官网效果预览，在新窗口打开`);
 
       els.modalCopy.onclick = () => {
         copyPrompt(prompt.prompt_text || '', els.modalCopy);
       };
 
+      modalTrigger = trigger || document.activeElement;
+      els.modalOverlay.hidden = false;
       els.modalOverlay.classList.add('active');
+      els.page.inert = true;
       document.body.style.overflow = 'hidden';
+      els.modalClose.focus({ preventScroll: true });
     }
 
     function closeModal() {
       els.modalOverlay.classList.remove('active');
+      els.modalOverlay.hidden = true;
+      els.page.inert = false;
       document.body.style.overflow = '';
+      if (modalTrigger?.isConnected) modalTrigger.focus({ preventScroll: true });
+      modalTrigger = null;
     }
 
     // Modal events
@@ -1167,8 +1266,20 @@
       if (e.target === els.modalOverlay) closeModal();
     });
     document.addEventListener('keydown', (e) => {
-      if (e.key === 'Escape' && els.modalOverlay.classList.contains('active')) {
+      if (els.modalOverlay.hidden) return;
+      if (e.key === 'Escape') {
         closeModal();
+      } else if (e.key === 'Tab') {
+        const focusable = [...els.modal.querySelectorAll('a[href], button:not([disabled])')];
+        const first = focusable[0];
+        const last = focusable[focusable.length - 1];
+        if (e.shiftKey && document.activeElement === first) {
+          e.preventDefault();
+          last.focus();
+        } else if (!e.shiftKey && document.activeElement === last) {
+          e.preventDefault();
+          first.focus();
+        }
       }
     });
 
