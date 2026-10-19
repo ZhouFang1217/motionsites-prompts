@@ -73,6 +73,36 @@ class GalleryBuildTests(unittest.TestCase):
                 build(output, videos)
             self.assertEqual((output / 'index.html').read_bytes(), original)
 
+    def test_private_image_preview_is_not_counted_as_a_video(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            media = root / 'media'
+            media.mkdir()
+            (media / 'interactive-discovery.mp4').write_bytes(b'video packaging fixture')
+            (media / 'projects-catalog.png').write_bytes(b'image packaging fixture')
+            manifest = build(root / 'private', media)
+            self.assertEqual(manifest['local_preview_files'], 2)
+            self.assertEqual(manifest['local_preview_videos'], 1)
+            self.assertEqual(manifest['local_preview_images'], 1)
+            page = (root / 'private/index.html').read_text()
+            embedded = re.search(r'<script id="local-preview-data" type="application/json">(.*?)</script>', page, re.S)
+            self.assertEqual(json.loads(embedded.group(1))['projects-catalog']['kind'], 'image')
+
+    def test_video_poster_is_bundled_without_counting_as_another_preview(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            media = root / 'media'
+            (media / 'posters').mkdir(parents=True)
+            (media / 'interactive-discovery.mp4').write_bytes(b'video packaging fixture')
+            (media / 'posters/interactive-discovery.jpg').write_bytes(b'poster packaging fixture')
+            output = root / 'private'
+            manifest = build(output, media)
+            self.assertEqual(manifest['local_preview_files'], 1)
+            page = (output / 'index.html').read_text()
+            embedded = re.search(r'<script id="local-preview-data" type="application/json">(.*?)</script>', page, re.S)
+            poster = json.loads(embedded.group(1))['interactive-discovery']['poster']
+            self.assertEqual((output / poster).read_bytes(), b'poster packaging fixture')
+
     def test_local_file_matching_supports_id_title_and_parent_folder(self):
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
@@ -92,6 +122,15 @@ class GalleryBuildTests(unittest.TestCase):
             (root / 'Interactive Discovery.webm').write_bytes(b'2')
             with self.assertRaisesRegex(ValueError, 'Multiple local videos'):
                 match_local_files(root, self.records)
+
+    def test_exact_id_wins_over_another_records_identical_title(self):
+        with tempfile.TemporaryDirectory() as directory:
+            root = Path(directory)
+            (root / 'portal.mp4').write_bytes(b'packaging fixture')
+            records = [{'id': 'portal', 'title': 'Portal Dashboard'}, {'id': 'portal-hero', 'title': 'Portal'}]
+            matches, unmatched = match_local_files(root, records)
+            self.assertEqual(set(matches), {'portal'})
+            self.assertEqual(unmatched, [])
 
     def test_symlinked_local_media_is_rejected(self):
         with tempfile.TemporaryDirectory() as directory:

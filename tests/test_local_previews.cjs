@@ -74,6 +74,8 @@ function storageMock(shared = new Map(), failWrites = false) {
   assert.equal(library.match(media('video.mp4', 'supplement-shop/video.mp4')), 'supplement-shop'); checks++;
   assert.equal(library.match(media('interactive-discovery.html')), null); checks++;
   assert.equal(library.match(media('unknown.mp4')), null); checks++;
+  const collision = new Library([{id: 'portal', title: 'Portal Dashboard'}, {id: 'portal-hero', title: 'Portal'}], {}, () => {});
+  assert.equal(collision.match(media('portal.mp4')), 'portal'); checks++;
   const report = await library.importFiles([media('Interactive Discovery.mp4'), media('unknown.mp4')]);
   assert.equal(report.imported, 1);
   assert.equal(report.saved, 0);
@@ -88,6 +90,17 @@ function storageMock(shared = new Map(), failWrites = false) {
   assert.equal((await bundled.get('interactive-discovery')).url, 'media/interactive-discovery-123.mp4'); checks++;
   const hostile = new Library(records, {'interactive-discovery': {path: 'https://example.com/private.mp4'}}, () => {});
   assert.equal(await hostile.get('interactive-discovery'), null); checks++;
+  const mixed = new Library(records, {
+    'interactive-discovery': {path: 'media/interactive-discovery-123.png', kind: 'image', poster: 'media/interactive-discovery-123.png'},
+    'projects-catalog': {path: 'media/projects-catalog-456.mp4', kind: 'video'},
+  }, () => {});
+  assert.equal((await mixed.get('interactive-discovery')).kind, 'image'); checks++;
+  assert.equal(mixed.poster('interactive-discovery'), 'media/interactive-discovery-123.png'); checks++;
+  assert.equal(mixed.countsByKind().image, 1);
+  assert.equal(mixed.countsByKind().video, 1); checks++;
+  await mixed.importFiles([media('interactive-discovery.mp4')]);
+  assert.equal(mixed.countsByKind().image, 0);
+  assert.equal(mixed.countsByKind().video, 2); checks++;
 
   const shared = new Map();
   const Persistent = load(storageMock(shared));

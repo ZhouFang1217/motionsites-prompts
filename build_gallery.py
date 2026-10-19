@@ -15,6 +15,7 @@ DATA_MARKER = '<!-- embedded-prompt-data -->'
 LOCAL_MARKER = '<!-- embedded-local-previews -->'
 REQUIRED_FIELDS = {'id', 'title', 'category', 'type', 'is_free', 'prompt_text'}
 VIDEO_EXTENSIONS = {'.mp4', '.webm', '.mov', '.m4v', '.ogv', '.ogg'}
+IMAGE_EXTENSIONS = {'.png', '.jpg', '.jpeg', '.webp', '.gif', '.avif'}
 
 
 def normalized_name(value):
@@ -27,16 +28,24 @@ def match_local_files(directory, records):
     if not directory.is_dir():
         raise ValueError('The local preview source must be a directory.')
     names = {}
+    exact_ids = {record['id'] for record in records}
     for record in records:
         for name in (record['id'], record['title']):
             names.setdefault(normalized_name(name), set()).add(record['id'])
     matches, unmatched = {}, []
     for file in sorted(directory.rglob('*')):
-        if not file.is_file() or file.suffix.lower() not in VIDEO_EXTENSIONS:
+        if file.relative_to(directory).parts[0] == 'posters':
+            continue
+        if not file.is_file() or file.suffix.lower() not in VIDEO_EXTENSIONS | IMAGE_EXTENSIONS:
             continue
         if file.is_symlink() or directory not in file.resolve().parents:
             raise ValueError('Symlinked or external preview files are not accepted.')
-        candidates = names.get(normalized_name(file.stem), set())
+        if file.stem in exact_ids:
+            candidates = {file.stem}
+        elif file.parent.name in exact_ids:
+            candidates = {file.parent.name}
+        else:
+            candidates = names.get(normalized_name(file.stem), set())
         if not candidates:
             candidates = names.get(normalized_name(file.parent.name), set())
         if len(candidates) != 1:
@@ -44,7 +53,7 @@ def match_local_files(directory, records):
             continue
         prompt_id = next(iter(candidates))
         if prompt_id in matches:
-            raise ValueError(f'Multiple local videos match {prompt_id}; keep one video per effect.')
+            raise ValueError(f'Multiple local videos or images match {prompt_id}; keep one preview per effect.')
         matches[prompt_id] = file
     return matches, unmatched
 
@@ -106,13 +115,29 @@ def build(output_dir, local_previews=None):
     if local_previews and (output_dir / 'motionsites-light-app.zip').exists():
         raise ValueError('Use a separate directory for the private gallery; this directory already has a public upload ZIP.')
     local_manifest = {}
+    poster_sources = {}
     for prompt_id, file in sources.items():
         checksum = hashlib.sha256()
         with file.open('rb') as stream:
             for chunk in iter(lambda: stream.read(1024 * 1024), b''):
                 checksum.update(chunk)
         relative_path = f'media/{prompt_id}-{checksum.hexdigest()[:12]}{file.suffix.lower()}'
-        local_manifest[prompt_id] = {'path': relative_path, 'bytes': file.stat().st_size}
+        local_manifest[prompt_id] = {
+            'path': relative_path,
+            'bytes': file.stat().st_size,
+            'kind': 'video' if file.suffix.lower() in VIDEO_EXTENSIONS else 'image',
+        }
+        if file.suffix.lower() in IMAGE_EXTENSIONS:
+            local_manifest[prompt_id]['poster'] = relative_path
+        elif local_previews:
+            poster = local_previews.resolve() / 'posters' / f'{prompt_id}.jpg'
+            if poster.exists():
+                if poster.is_symlink() or local_previews.resolve() not in poster.resolve().parents:
+                    raise ValueError('Symlinked or external preview posters are not accepted.')
+                poster_hash = hashlib.sha256(poster.read_bytes()).hexdigest()[:12]
+                poster_path = f'media/{prompt_id}-poster-{poster_hash}.jpg'
+                local_manifest[prompt_id]['poster'] = poster_path
+                poster_sources[poster_path] = poster
     page = render_gallery(template, records, local_manifest)
     output_dir.mkdir(parents=True, exist_ok=True)
     for prompt_id, file in sources.items():
@@ -121,6 +146,11 @@ def build(output_dir, local_previews=None):
             raise ValueError('A media output path escapes the output directory.')
         destination.parent.mkdir(exist_ok=True)
         shutil.copyfile(file, destination)
+    for relative_path, source in poster_sources.items():
+        destination = output_dir / relative_path
+        if destination.is_symlink() or output_dir.resolve() not in destination.resolve().parents:
+            raise ValueError('A poster output path escapes the output directory.')
+        shutil.copyfile(source, destination)
     (output_dir / 'index.html').write_bytes(page)
     archive_path = output_dir / 'motionsites-light-app.zip'
     entry = zipfile.ZipInfo('index.html', date_time=(1980, 1, 1, 0, 0, 0))
@@ -142,8 +172,10 @@ def build(output_dir, local_previews=None):
         'zip_bytes': archive_path.stat().st_size if not local_previews else None,
         'zip_sha256': hashlib.sha256(archive_path.read_bytes()).hexdigest() if not local_previews else None,
         'preview_mode': 'private local files' if local_previews else 'official links and user-imported browser-local videos',
-        'mirrored_preview_assets': 0,
+        'mirrored_preview_assets': len(local_manifest),
         'local_preview_files': len(local_manifest),
+        'local_preview_videos': sum(item['kind'] == 'video' for item in local_manifest.values()),
+        'local_preview_images': sum(item['kind'] == 'image' for item in local_manifest.values()),
         'unmatched_local_files': unmatched,
         'missing_local_previews': [record['id'] for record in records if record['id'] not in local_manifest],
     }
@@ -156,7 +188,7 @@ def build(output_dir, local_previews=None):
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument('--output', type=Path, help='Output directory (default: dist, or local_gallery for a private build)')
-    parser.add_argument('--local-previews', type=Path, help='User-provided video directory; makes a private gallery without an upload ZIP')
+    parser.add_argument('--local-previews', type=Path, help='Local video/image directory; makes a private gallery without an upload ZIP')
     args = parser.parse_args()
     output = args.output or ROOT / ('local_gallery' if args.local_previews else 'dist')
     manifest = build(output, args.local_previews)

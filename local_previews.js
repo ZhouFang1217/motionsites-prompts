@@ -63,10 +63,27 @@
       return [...this.ids].filter(id => this.has(id)).length;
     }
 
+    countsByKind() {
+      const counts = { video: 0, image: 0 };
+      for (const id of this.ids) {
+        if (!this.has(id)) continue;
+        const imported = this.sessionFiles.has(id) || (this.db && this.savedIds.has(id));
+        counts[!imported && this.bundled[id]?.kind === 'image' ? 'image' : 'video']++;
+      }
+      return counts;
+    }
+
+    poster(id) {
+      const path = this.bundled[id]?.poster;
+      return path && /^media\/[a-z0-9-]+\.(png|jpg|jpeg|webp|gif|avif)$/i.test(path) ? path : null;
+    }
+
     match(file) {
       if (!EXTENSIONS.test(file.name)) return null;
       const parts = (file.webkitRelativePath || file.name).replace(/\\/g, '/').split('/');
       const stem = file.name.replace(/\.[^.]+$/, '');
+      if (this.ids.has(stem)) return stem;
+      if (this.ids.has(parts[parts.length - 2])) return parts[parts.length - 2];
       let candidates = this.names.get(normalize(stem));
       if (!candidates || candidates.size === 0) candidates = this.names.get(normalize(parts[parts.length - 2] || ''));
       return candidates?.size === 1 ? [...candidates][0] : null;
@@ -130,7 +147,10 @@
       }
       const relative = this.bundled[id]?.path;
       if (relative && /^media\/[a-z0-9-]+\.(mp4|webm|mov|m4v|ogv|ogg)$/i.test(relative)) {
-        return { url: relative };
+        return { url: relative, kind: 'video' };
+      }
+      if (relative && /^media\/[a-z0-9-]+\.(png|jpg|jpeg|webp|gif|avif)$/i.test(relative)) {
+        return { url: relative, kind: 'image' };
       }
       return null;
     }

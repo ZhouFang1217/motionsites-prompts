@@ -83,7 +83,7 @@
     .local-actions { display: flex; gap: 10px; align-items: center; flex-wrap: wrap; }
     .local-actions label { display: inline-flex; gap: 8px; align-items: center; font-size: 0.82rem; color: var(--muted); }
     #local-import-report { margin-top: 10px; font-size: 0.8rem; color: var(--muted); white-space: pre-wrap; overflow-wrap: anywhere; }
-    #local-preview-video { width: 100%; max-height: 42vh; margin-bottom: 12px; border-radius: var(--radius-sm); background: #000; }
+    #local-preview-video, #local-preview-image { width: 100%; max-height: 42vh; margin-bottom: 12px; border-radius: var(--radius-sm); background: #000; object-fit: contain; }
     #local-preview-status { margin: 0 0 12px; }
 
     *, *::before, *::after {
@@ -421,6 +421,16 @@
 
     .card-header {
       flex: 1;
+    }
+
+    .card-thumbnail {
+      display: block;
+      width: 100%;
+      aspect-ratio: 16 / 10;
+      object-fit: contain;
+      background: #121318;
+      border-radius: var(--radius-sm);
+      margin: 12px 0;
     }
 
     .card-title {
@@ -903,12 +913,12 @@
       </div>
     </header>
 
-    <section class="local-library" aria-label="本地视频预览">
+    <section class="local-library" aria-label="本地效果预览">
       <div class="local-actions">
         <button type="button" class="detail-btn" id="import-folder" disabled>导入视频目录</button>
         <button type="button" class="detail-btn" id="import-files" disabled>选择视频文件</button>
         <span id="local-preview-count" role="status">本地预览文件 0 / 328</span>
-        <label><input type="checkbox" id="local-only">仅显示有本地视频的条目</label>
+        <label><input type="checkbox" id="local-only">仅显示有本地预览的条目</label>
       </div>
       <input id="preview-folder-input" type="file" webkitdirectory multiple accept="video/*" hidden>
       <input id="preview-files-input" type="file" multiple accept="video/*,.mp4,.webm,.mov,.m4v,.ogv,.ogg" hidden>
@@ -957,8 +967,9 @@
           <h3 id="preview-heading">效果预览</h3>
           <p id="local-preview-status" role="status">尚未导入本地视频。</p>
           <video id="local-preview-video" controls muted playsinline preload="metadata" hidden aria-label="本地效果预览视频"></video>
+          <img id="local-preview-image" hidden alt="">
           <a id="modal-preview-link" class="preview-link" target="_blank" rel="noopener noreferrer">在官网预览效果 <span aria-hidden="true">↗</span></a>
-          <p>本地视频可在此播放；官网预览会在新窗口打开。导入的文件不会随公开上传包导出。</p>
+          <p>本地视频可在此播放，图片预览会单独标注。官网预览会在新窗口打开；导入文件不会随公开上传包导出。</p>
         </section>
         <div id="modal-prompt-label">完整提示词</div>
         <pre id="modal-prompt"></pre>
@@ -1021,6 +1032,7 @@
       folderInput: document.getElementById('preview-folder-input'),
       filesInput: document.getElementById('preview-files-input'),
       video: document.getElementById('local-preview-video'),
+      previewImage: document.getElementById('local-preview-image'),
       videoStatus: document.getElementById('local-preview-status'),
     };
 
@@ -1050,7 +1062,8 @@
         els.status.style.display = 'none';
         const bundled = document.getElementById('local-preview-data');
         previewLibrary = new LocalPreviewLibrary(allPrompts, bundled ? JSON.parse(bundled.textContent) : {}, () => {
-          els.localCount.textContent = `本地预览文件 ${previewLibrary.count()} / ${allPrompts.length}`;
+          const counts = previewLibrary.countsByKind();
+          els.localCount.textContent = `本地预览 ${previewLibrary.count()} / ${allPrompts.length}（视频 ${counts.video}，图片 ${counts.image}）`;
           filterAndRender();
           if (activePromptId) loadLocalPreview(activePromptId);
         });
@@ -1118,6 +1131,7 @@
       const tierText = prompt.is_free ? '免费' : '付费';
       const platformClass = prompt.platform === 'app' ? 'badge-platform-app' : 'badge-platform-website';
       const platformText = prompt.platform === 'app' ? 'App' : 'Website';
+      const poster = previewLibrary?.poster(prompt.id);
 
       article.innerHTML = `
         <span class="card-number">${originalIndex + 1}</span>
@@ -1129,11 +1143,12 @@
             <span class="badge badge-type">${escapeHtml(prompt.type || '-')}</span>
             <span class="badge ${tierClass}">${tierText}</span>
           </div>
+          ${poster ? `<img class="card-thumbnail" src="${escapeHtml(poster)}" loading="lazy" decoding="async" alt="">` : ''}
           ${prompt.description ? `<p class="card-description">${escapeHtml(prompt.description)}</p>` : ''}
-          ${previewLibrary?.has(prompt.id) ? '<span class="badge badge-free">本地视频已导入</span>' : ''}
+          ${previewLibrary?.has(prompt.id) ? '<span class="badge badge-free">本地预览已就绪</span>' : ''}
         </div>
         <div class="card-footer">
-          <button type="button" class="detail-btn" aria-label="查看 ${escapeHtml(prompt.title)} 的提示词">${previewLibrary?.has(prompt.id) ? '本地预览' : '查看提示词'}</button>
+          <button type="button" class="detail-btn" aria-label="${previewLibrary?.has(prompt.id) ? '本地预览' : '查看提示词'}：${escapeHtml(prompt.title)}">${previewLibrary?.has(prompt.id) ? '本地预览' : '查看提示词'}</button>
           <a class="preview-link" href="${escapeHtml(officialPreviewUrl(prompt))}" target="_blank" rel="noopener noreferrer" aria-label="${escapeHtml(prompt.title)}：官网效果预览，在新窗口打开">官网预览 <span aria-hidden="true">↗</span></a>
           <button class="copy-btn" aria-label="复制完整提示词" title="复制完整提示词">
             ${SVG_COPY}
@@ -1189,7 +1204,7 @@
 
       if (data.length === 0) {
         els.emptyState.style.display = 'block';
-        els.emptyState.querySelector('h3').textContent = els.localOnly.checked ? '暂无匹配的本地预览视频' : '未找到匹配的提示词';
+        els.emptyState.querySelector('h3').textContent = els.localOnly.checked ? '暂无匹配的本地预览' : '未找到匹配的提示词';
         els.emptyState.querySelector('p').textContent = els.localOnly.checked ? '请先选择视频目录导入，或调整其他筛选条件。' : '尝试调整搜索关键词或筛选条件';
         els.counter.querySelector('strong').textContent = 0;
         return;
@@ -1309,6 +1324,8 @@
       els.video.hidden = true;
       els.video.removeAttribute('src');
       els.video.load();
+      els.previewImage.hidden = true;
+      els.previewImage.removeAttribute('src');
       if (previewObjectUrl) URL.revokeObjectURL(previewObjectUrl);
       previewObjectUrl = null;
     }
@@ -1326,6 +1343,18 @@
         }
         const url = source.blob ? URL.createObjectURL(source.blob) : source.url;
         if (source.blob) previewObjectUrl = url;
+        if (source.kind === 'image') {
+          els.previewImage.alt = `${els.modalTitle.textContent} 的本地图片预览`;
+          els.previewImage.onerror = () => {
+            if (request === previewRequest) els.videoStatus.textContent = '本地图片无法读取，请检查原始文件。';
+          };
+          els.previewImage.onload = () => {
+            if (request === previewRequest) els.videoStatus.textContent = '此条目提供图片预览，未计入视频数量。';
+          };
+          els.previewImage.hidden = false;
+          els.previewImage.src = url;
+          return;
+        }
         els.video.onerror = () => {
           if (request === previewRequest) els.videoStatus.textContent = '此文件无法播放，可能已损坏或编码不受支持。建议使用 H.264 MP4 或 WebM。';
         };
